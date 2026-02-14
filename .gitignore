@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Compiled TypeScript output
+dist/
+
+# WhatsApp Web.js authentication files (contains session data)
+.wwebjs_auth/
+
+# Logs
+*.log
+logs/
+
+# Environment variables (if you add any)
+.env
+
+# Configuration files (contains personal phone number)
+config.yaml
+
+# SQLite database files
+*.db
+*.sqlite
+*.sqlite3
+messengar.db
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+tmp/
+temp/

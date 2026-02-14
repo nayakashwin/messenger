@@ -1,0 +1,55 @@
+# ============================================================================
+# MESSENGAR - Configuration File
+# ============================================================================
+# 
+# This YAML file stores the configuration for your WhatsApp CLI client.
+# Edit the values below to customize your setup.
+#
+# IMPORTANT: This file should NOT be committed to version control
+# as it contains your personal phone number.
+# It is already added to .gitignore
+
+# ============================================================================
+# REQUIRED: Personal Phone Number
+# ============================================================================
+# 
+# Your personal WhatsApp phone number with country code.
+# This is the ONLY number this app will communicate with.
+#
+# IMPORTANT:
+# - Include country code (e.g., 1 for US/Canada, 44 for UK, 91 for India)
+# - DO NOT include the + symbol
+# - DO NOT include spaces, dashes, or parentheses
+#
+# EXAMPLES:
+# personal_phone_number: "12345678900"    # US/Canada: +1-234-567-8900
+# personal_phone_number: "447123456789"   # UK: +44-7123-456-789
+# personal_phone_number: "919876543210"   # India: +91-98765-43210
+#
+# ============================================================================
+
+personal_phone_number: "{Add Number Here}"
+
+# ============================================================================
+# OPTIONAL: Additional Settings (for future features)
+# ============================================================================
+
+# Future: Stock ticker symbols to monitor
+# stock_tickers:
+#   - AAPL
+#   - GOOGL
+#   - TSLA
+
+# Future: Weather location for alerts
+# weather_location: "New York, NY"
+
+# Future: Smart home integrations
+# nest_integration:
+#   enabled: false
+# ring_integration:
+#   enabled: false
+
+# Future: Message templates for common alerts
+# message_templates:
+#   stock_alert: "Stock Alert: {symbol} is at ${price} ({change}%)"
+#   weather_alert: "Weather Alert: {condition} in {location}"
