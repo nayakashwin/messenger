@@ -31,8 +31,34 @@
 personal_phone_number: "{Add Number Here}"
 
 # ============================================================================
+# DAEMON CONFIGURATION
+# ============================================================================
+
+daemon:
+  # PID file path - stores the process ID of the daemon
+  pid_file: "./messengar-daemon.pid"
+  
+  # Log file path - all daemon activity is logged here
+  log_file: "./messengar-daemon.log"
+
+# ============================================================================
+# API CONFIGURATION
+# ============================================================================
+
+api:
+  # Port for the HTTP API server
+  port: 3000
+  
+  # Host to bind the API server to (localhost for security)
+  host: "localhost"
+  
+  # API key for authentication (change this to a secure random string!)
+  api_key: "change-this-to-a-secure-api-key"
+
+# ============================================================================
 # OPTIONAL: Additional Settings (for future features)
 # ============================================================================
+ +++++++ REPLACE
 
 # Future: Stock ticker symbols to monitor
 # stock_tickers:

@@ -1,0 +1,23 @@
+[Unit]
+Description=MESSENGAR - WhatsApp Daemon with HTTP API
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/ash/messengar
+ExecStart=/usr/bin/node /home/ash/messengar/dist/main.js
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/ash/messengar/messengar-daemon.log
+StandardError=append:/home/ash/messengar/messengar-daemon.log
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Environment
+NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

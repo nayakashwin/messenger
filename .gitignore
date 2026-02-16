@@ -11,6 +11,9 @@ dist/
 *.log
 logs/
 
+# PID files (daemon process ID)
+*.pid
+
 # Environment variables (if you add any)
 .env
 

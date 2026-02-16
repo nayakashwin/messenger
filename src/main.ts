@@ -1,21 +1,25 @@
 /**
  * ============================================================================
- * MESSENGAR - WhatsApp CLI Client (Personal Number Only)
+ * MESSENGAR - WhatsApp Daemon with HTTP API
  * ============================================================================
  * 
- * Simple WhatsApp CLI for personal messaging.
+ * MESSENGAR is a WhatsApp daemon that runs in the background and provides
+ * an HTTP API for sending messages. It automatically saves all incoming
+ * messages to a SQLite database.
+ * 
+ * FEATURES:
+ * - Runs as a background daemon process
+ * - HTTP API for sending messages via curl
+ * - Automatic message logging to SQLite database
+ * - Systemd service support for auto-start on boot
+ * - Graceful shutdown on signals
+ * - File-based logging
  * 
  * HOW IT WORKS:
- * 1. Run the program and scan QR code with your phone
- * 2. Type any message and press Enter to send it to yourself
- * 3. Messages sent from CLI appear on your phone
- * 4. Messages sent from your phone appear in the CLI
- * 5. All messages are saved to SQLite database
- * 
- * DATABASE:
- * - Source 'cli': Messages sent from this CLI
- * - Source 'phone': Messages sent from your phone
- * - Complete audit trail with timestamps
+ * 1. Run the daemon (manually or via systemd)
+ * 2. Scan QR code once for authentication
+ * 3. Send messages via HTTP API or from your phone
+ * 4. All messages are saved to SQLite database
  * 
  * ============================================================================
  */
@@ -26,10 +30,31 @@
 
 import { Client, LocalAuth, Message } from 'whatsapp-web.js';
 import * as qrcode from 'qrcode-terminal';
-import * as readline from 'readline';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import { db, MessageRecord } from './database';
+import { ApiServer } from './api';
+import { Daemon } from './daemon';
+
+// ============================================================================
+// TYPE DEFINITIONS
+// ============================================================================
+
+/**
+ * Configuration interface
+ */
+interface Config {
+  personal_phone_number: string;
+  daemon: {
+    pid_file: string;
+    log_file: string;
+  };
+  api: {
+    port: number;
+    host: string;
+    api_key: string;
+  };
+}
 
 // ============================================================================
 // CONFIGURATION LOADING
@@ -38,10 +63,10 @@ import { db, MessageRecord } from './database';
 /**
  * Load configuration from config.yaml file
  */
-function loadConfig(): { personal_phone_number: string } {
+function loadConfig(): Config {
   try {
     const configFile = fs.readFileSync('./config.yaml', 'utf8');
-    const config = yaml.load(configFile) as { personal_phone_number: string };
+    const config = yaml.load(configFile) as Config;
     console.log('✅ Configuration loaded successfully from config.yaml');
     return config;
   } catch (error) {
@@ -51,6 +76,8 @@ function loadConfig(): { personal_phone_number: string } {
     }
     console.log('\nMake sure config.yaml exists and contains:');
     console.log('personal_phone_number: "12345678900"\n');
+    console.log('daemon:\n  pid_file: "./messengar-daemon.pid"\n  log_file: "./messengar-daemon.log"\n');
+    console.log('api:\n  port: 3000\n  host: "localhost"\n  api_key: "your-secret-key"\n');
     process.exit(1);
   }
 }
@@ -65,15 +92,14 @@ const PERSONAL_CHAT_ID: string = `${PERSONAL_PHONE_NUMBER}@c.us`;
 // ============================================================================
 
 let client: Client | undefined;
-let rl: readline.Interface | undefined;
+let apiServer: ApiServer | undefined;
+let daemon: Daemon | undefined;
 let isAuthenticated: boolean = false;
 
 /**
- * Track messages sent from CLI to distinguish them from phone messages
- * When we send a message, we add it to this Set with a unique key
- * The message_create event handler checks this Set to determine the source
+ * Track messages sent from API to distinguish them from phone messages
  */
-const cliSentMessages: Set<string> = new Set();
+const apiSentMessages: Set<string> = new Set();
 
 // ============================================================================
 // INITIALIZATION
@@ -85,12 +111,12 @@ const cliSentMessages: Set<string> = new Set();
 function initializeClient(): void {
   // Validate phone number
   if (PERSONAL_PHONE_NUMBER === "12345678900" || !PERSONAL_PHONE_NUMBER) {
-    console.log('\n⚠️  Please configure your phone number in config.yaml\n');
+    daemon?.log('\n⚠️  Please configure your phone number in config.yaml\n');
     process.exit(1);
   }
   
-  console.log('\n🚀 Initializing WhatsApp client...\n');
-  console.log(`📱 Personal number: ${PERSONAL_PHONE_NUMBER}\n`);
+  daemon?.log(`🚀 Initializing WhatsApp client...`);
+  daemon?.log(`📱 Personal number: ${PERSONAL_PHONE_NUMBER}`);
   
   client = new Client({
     authStrategy: new LocalAuth(),
@@ -106,23 +132,22 @@ function initializeClient(): void {
   
   // QR code for authentication
   client.on('qr', (qr: string) => {
-    console.log('\n📱 Scan this QR code with your phone:\n');
+    daemon?.log('\n📱 Scan this QR code with your phone:\n');
     qrcode.generate(qr, { small: true });
-    console.log('\n⏳ Waiting for you to scan...\n');
+    daemon?.log('\n⏳ Waiting for you to scan...\n');
   });
   
   // Authenticated successfully
   client.on('authenticated', () => {
-    console.log('\n✅ Authenticated successfully!\n');
+    daemon?.log('\n✅ Authenticated successfully!');
   });
   
   // Client is ready to send/receive messages
   client.on('ready', () => {
-    console.log('\n🎉 Ready! You can now send messages.\n');
-    console.log('💡 Just type a message and press Enter to send\n');
-    console.log('Press Ctrl+C to exit\n');
+    daemon?.log('\n🎉 WhatsApp client is ready!');
+    daemon?.log('📡 Daemon is now accepting messages via API and from your phone');
+    daemon?.log('📝 All messages will be saved to database\n');
     isAuthenticated = true;
-    startInteractiveMode();
   });
   
   // Handle incoming/outgoing messages
@@ -141,43 +166,38 @@ function initializeClient(): void {
     // ============================================================================
     // Determine message source
     // ============================================================================
-    // Create a unique key for this message to check if it was sent from CLI
     const messageKey = `${message.body || ''}_${message.timestamp}`;
     
     let source: 'cli' | 'phone';
     let label: string;
     
-    // Check if this message was sent from our CLI (tracked in cliSentMessages Set)
-    if (cliSentMessages.has(messageKey)) {
-      // Message was sent from CLI - mark as cli and remove from tracking
+    // Check if this message was sent from our API
+    if (apiSentMessages.has(messageKey)) {
       source = 'cli';
-      label = '💻 FROM CLI';
-      cliSentMessages.delete(messageKey); // Remove from tracking to prevent memory leak
+      label = '💻 FROM API';
+      apiSentMessages.delete(messageKey);
     } else if (isFromMe) {
-      // Message is from me but not tracked - must be from phone
       source = 'phone';
       label = '📱 FROM PHONE';
     } else {
-      // Message received from someone else (shouldn't happen with personal number)
       source = 'phone';
       label = '📩 RECEIVED';
     }
     
     // ============================================================================
-    // Display message in compact inline format
+    // Log message
     // ============================================================================
     const icon = source === 'cli' ? '💻' : '📱';
     const messageText = message.body || '';
     
-    // Print inline: Icon [Timestamp] Message
-    console.log(`\n${icon} [${timestamp}] ${messageText}`);
+    daemon?.log(`${icon} [${timestamp}] ${messageText}`);
     
     if (message.hasMedia) {
-      console.log(`   [Media: ${message.type}]`);
+      daemon?.log(`   [Media: ${message.type}]`);
     }
     
     // ============================================================================
-    // Save to database (silent - no output)
+    // Save to database (silent)
     // ============================================================================
     try {
       const senderNumber: string = message.from.replace('@c.us', '');
@@ -196,27 +216,21 @@ function initializeClient(): void {
       };
       
       await db.saveMessage(messageRecord);
-      // Database save is silent - no console output to keep CLI clean
     } catch (error) {
-      // Silent error - don't clutter the CLI with database errors
-    }
-    
-    // Show prompt again
-    if (rl && isAuthenticated) {
-      rl.prompt();
+      daemon?.logError('Failed to save message to database', error as Error);
     }
   });
   
   // Handle disconnection
   client.on('disconnected', async (reason: string) => {
-    console.log('\n⚠️  Disconnected:', reason, '\n');
+    daemon?.log(`\n⚠️  Disconnected: ${reason}`);
     isAuthenticated = false;
     try {
       await db.close();
     } catch (error) {
       // Ignore error
     }
-    process.exit(0);
+    process.exit(1);
   });
   
   // Start the client
@@ -224,88 +238,33 @@ function initializeClient(): void {
 }
 
 // ============================================================================
-// INTERACTIVE MESSAGING
+// MESSAGE SENDING
 // ============================================================================
 
 /**
- * Start simple interactive mode
- * Just type a message and press Enter to send
+ * Send a message via WhatsApp
+ * 
+ * @param {string} message - Message to send
  */
-function startInteractiveMode(): void {
-  rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    prompt: '💬 > '
-  });
-  
-  rl.prompt();
-  
-  // Handle user input - any text typed is sent as a message
-  rl.on('line', async (line: string) => {
-    const message: string = line.trim();
-    
-    // Skip empty lines
-    if (!message) {
-      rl?.prompt();
-      return;
-    }
-    
-    // Special command: \exit to quit the application
-    if (message === '\\exit') {
-      await handleExit();
-      return;
-    }
-    
-    // Send the message directly (no command prefix needed)
-    try {
-      if (!client) {
-        console.log('\n❌ Client not initialized\n');
-        return;
-      }
-      
-      // Track this message as being sent from CLI before sending
-      // We use current timestamp as an approximation - the actual timestamp
-      // will be set by WhatsApp when the message is created
-      const currentTimestamp = Math.floor(Date.now() / 1000);
-      const messageKey = `${message}_${currentTimestamp}`;
-      cliSentMessages.add(messageKey);
-      
-      // Also track with +/- 2 second tolerance for timestamp variations
-      cliSentMessages.add(`${message}_${currentTimestamp - 1}`);
-      cliSentMessages.add(`${message}_${currentTimestamp + 1}`);
-      
-      await client.sendMessage(PERSONAL_CHAT_ID, message);
-      // Message will be displayed by the message_create handler
-    } catch (error) {
-      console.error('\n❌ Failed to send:', error);
-    }
-    
-    rl?.prompt();
-  });
-  
-  // Handle Ctrl+C
-  rl.on('close', async () => {
-    await handleExit();
-  });
-}
-
-/**
- * Exit the application gracefully
- */
-async function handleExit(): Promise<void> {
-  console.log('\n👋 Closing...\n');
-  
-  if (client) {
-    await client.destroy();
+async function sendMessage(message: string): Promise<void> {
+  if (!client || !isAuthenticated) {
+    throw new Error('WhatsApp client not ready');
   }
   
   try {
-    await db.close();
+    // Track this message as being sent from API
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    const messageKey = `${message}_${currentTimestamp}`;
+    apiSentMessages.add(messageKey);
+    
+    // Track with tolerance for timestamp variations
+    apiSentMessages.add(`${message}_${currentTimestamp - 1}`);
+    apiSentMessages.add(`${message}_${currentTimestamp + 1}`);
+    
+    await client.sendMessage(PERSONAL_CHAT_ID, message);
   } catch (error) {
-    // Ignore
+    throw error;
   }
-  
-  process.exit(0);
 }
 
 // ============================================================================
@@ -314,29 +273,79 @@ async function handleExit(): Promise<void> {
 
 async function main(): Promise<void> {
   console.log('\n' + '='.repeat(60));
-  console.log('    📱 MESSENGAR - WhatsApp CLI');
+  console.log('    📱 MESSENGAR - WhatsApp Daemon');
   console.log('='.repeat(60));
-  console.log('\n  Simple messaging to your WhatsApp number');
-  console.log('  Just type and press Enter to send\n');
-  console.log('  Type \\exit to quit\n');
+  console.log('\n  WhatsApp daemon with HTTP API');
+  console.log('  All messages saved to database\n');
   console.log('='.repeat(60));
+  
+  // Initialize daemon
+  try {
+    daemon = new Daemon(
+      config.daemon.pid_file,
+      config.daemon.log_file
+    );
+    await daemon.initialize();
+  } catch (error) {
+    console.error('Failed to initialize daemon:', error);
+    process.exit(1);
+  }
+  
+  // Setup graceful shutdown
+  daemon.setupShutdownHandler(async () => {
+    daemon?.log('🔄 Shutting down...');
+    
+    // Stop API server
+    if (apiServer && apiServer.isActive()) {
+      await apiServer.stop();
+    }
+    
+    // Stop WhatsApp client
+    if (client) {
+      await client.destroy();
+      daemon?.log('✅ WhatsApp client stopped');
+    }
+    
+    // Close database
+    try {
+      await db.close();
+      daemon?.log('✅ Database closed');
+    } catch (error) {
+      // Ignore error
+    }
+  });
   
   // Initialize database
   try {
     await db.initialize();
   } catch (error) {
-    console.error('\n❌ Database initialization failed\n');
+    daemon?.logError('Database initialization failed', error as Error);
+    await daemon?.cleanup();
+    process.exit(1);
+  }
+  
+  // Initialize API server
+  try {
+    apiServer = new ApiServer({
+      port: config.api.port,
+      host: config.api.host,
+      apiKey: config.api.api_key
+    });
+    
+    // Set callback for sending messages
+    apiServer.setSendMessageCallback(sendMessage);
+    
+    // Start API server
+    await apiServer.start();
+  } catch (error) {
+    daemon?.logError('Failed to start API server', error as Error);
+    await daemon?.cleanup();
     process.exit(1);
   }
   
   // Start WhatsApp client
   initializeClient();
 }
-
-// Handle Ctrl+C globally
-process.on('SIGINT', async () => {
-  await handleExit();
-});
 
 // Run main
 main().catch((error) => {
