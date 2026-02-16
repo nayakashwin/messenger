@@ -52,7 +52,6 @@ interface Config {
   api: {
     port: number;
     host: string;
-    api_key: string;
   };
 }
 
@@ -77,7 +76,7 @@ function loadConfig(): Config {
     console.log('\nMake sure config.yaml exists and contains:');
     console.log('personal_phone_number: "12345678900"\n');
     console.log('daemon:\n  pid_file: "./messengar-daemon.pid"\n  log_file: "./messengar-daemon.log"\n');
-    console.log('api:\n  port: 3000\n  host: "localhost"\n  api_key: "your-secret-key"\n');
+    console.log('api:\n  port: 3000\n  host: "localhost"\n');
     process.exit(1);
   }
 }
@@ -150,38 +149,57 @@ function initializeClient(): void {
     isAuthenticated = true;
   });
   
-  // Handle incoming/outgoing messages
+  // Handle incoming messages from phone or API only
   client.on('message_create', async (message: Message) => {
-    // Ignore messages from other numbers - only process messages to/from personal number
+    // Strict filtering: Only capture messages from personal phone or sent via API
     const isFromPersonal: boolean = message.from === PERSONAL_CHAT_ID;
     const isToPersonal: boolean = message.to === PERSONAL_CHAT_ID;
+    const isGroup: boolean = message.from.includes('@g.us');
+    const isFromMe: boolean = message.fromMe;
     
-    if (!isFromPersonal && !isToPersonal) {
-      return; // Ignore messages from other numbers
+    // Create message key for API tracking
+    const messageKey = `${message.body || ''}_${message.timestamp}`;
+    
+    // Check if this was sent from our API
+    const isFromApi: boolean = apiSentMessages.has(messageKey);
+    
+    // STRICT FILTERING RULES:
+    // ALLOW:
+    //   1. Messages FROM personal phone (including to yourself)
+    //   2. Messages sent via API (to personal phone)
+    // IGNORE:
+    //   1. All group messages
+    //   2. Messages from other numbers
+    
+    if (isGroup) {
+      return; // Ignore all group messages
     }
     
-    const isFromMe: boolean = message.fromMe;
+    // Only allow if:
+    // 1. Sent from API (tracked)
+    // 2. From personal phone (to personal phone - notes from your phone)
+    if (!isFromApi && (!isFromPersonal || !isToPersonal)) {
+      return; // Ignore: not from API, and not from personal to personal
+    }
+    
     const timestamp = new Date(message.timestamp * 1000).toLocaleTimeString();
     
     // ============================================================================
     // Determine message source
     // ============================================================================
-    const messageKey = `${message.body || ''}_${message.timestamp}`;
-    
     let source: 'cli' | 'phone';
     let label: string;
     
-    // Check if this message was sent from our API
-    if (apiSentMessages.has(messageKey)) {
+    if (isFromApi) {
       source = 'cli';
       label = '💻 FROM API';
+      // Clean up tracking
       apiSentMessages.delete(messageKey);
-    } else if (isFromMe) {
-      source = 'phone';
-      label = '📱 FROM PHONE';
+      apiSentMessages.delete(`${message.body || ''}_${message.timestamp - 1}`);
+      apiSentMessages.delete(`${message.body || ''}_${message.timestamp + 1}`);
     } else {
       source = 'phone';
-      label = '📩 RECEIVED';
+      label = '📱 FROM PHONE';
     }
     
     // ============================================================================
@@ -328,8 +346,7 @@ async function main(): Promise<void> {
   try {
     apiServer = new ApiServer({
       port: config.api.port,
-      host: config.api.host,
-      apiKey: config.api.api_key
+      host: config.api.host
     });
     
     // Set callback for sending messages

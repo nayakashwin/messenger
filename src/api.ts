@@ -15,7 +15,6 @@
  * }
  * 
  * HEADERS:
- * Authorization: Bearer YOUR_API_KEY
  * Content-Type: application/json
  * 
  * RESPONSE:
@@ -61,7 +60,6 @@ interface ApiErrorResponse {
  */
 interface ApiConfig {
   port: number;
-  apiKey: string;
   host: string;
 }
 
@@ -139,25 +137,6 @@ export class ApiServer {
     // Send message endpoint
     this.app.post('/api/messages', async (req: Request, res: Response) => {
       try {
-        // Validate API key
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          const errorResponse: ApiErrorResponse = {
-            success: false,
-            error: 'Unauthorized: Missing or invalid Authorization header'
-          };
-          return res.status(401).json(errorResponse);
-        }
-
-        const providedKey = authHeader.substring(7); // Remove 'Bearer ' prefix
-        if (providedKey !== this.config.apiKey) {
-          const errorResponse: ApiErrorResponse = {
-            success: false,
-            error: 'Unauthorized: Invalid API key'
-          };
-          return res.status(401).json(errorResponse);
-        }
-
         // Validate request body
         const { message } = req.body as SendMessageRequest;
         

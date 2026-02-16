@@ -28,7 +28,7 @@
 #
 # ============================================================================
 
-personal_phone_number: "{Add Number Here}"
+personal_phone_number: "{Your Phone Number Here}"
 
 # ============================================================================
 # DAEMON CONFIGURATION
@@ -51,31 +51,7 @@ api:
   
   # Host to bind the API server to (localhost for security)
   host: "localhost"
-  
-  # API key for authentication (change this to a secure random string!)
-  api_key: "change-this-to-a-secure-api-key"
 
 # ============================================================================
 # OPTIONAL: Additional Settings (for future features)
 # ============================================================================
- +++++++ REPLACE
-
-# Future: Stock ticker symbols to monitor
-# stock_tickers:
-#   - AAPL
-#   - GOOGL
-#   - TSLA
-
-# Future: Weather location for alerts
-# weather_location: "New York, NY"
-
-# Future: Smart home integrations
-# nest_integration:
-#   enabled: false
-# ring_integration:
-#   enabled: false
-
-# Future: Message templates for common alerts
-# message_templates:
-#   stock_alert: "Stock Alert: {symbol} is at ${price} ({change}%)"
-#   weather_alert: "Weather Alert: {condition} in {location}"

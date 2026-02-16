@@ -83,10 +83,7 @@ messengar/
    api:
      port: 3000
      host: "localhost"
-     api_key: "your-secure-api-key"
    ```
-   
-   **Security Note**: Change the `api_key` to a secure random string before production use.
 
 5. **Compile TypeScript**:
    ```bash
@@ -186,7 +183,6 @@ Once the daemon is running and authenticated, you can send messages via the HTTP
 ```bash
 curl -X POST http://localhost:3000/api/messages \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your-secure-api-key" \
   -d '{"message": "Buy milk on the way home"}'
 ```
 
@@ -203,7 +199,7 @@ curl -X POST http://localhost:3000/api/messages \
 ```json
 {
   "success": false,
-  "error": "Unauthorized: Invalid API key"
+  "error": "Bad request: Message is required and must be a string"
 }
 ```
 
@@ -226,9 +222,19 @@ curl http://localhost:3000/api/health
 
 Simply open WhatsApp and send a message to yourself. The daemon will automatically receive and save it to the database.
 
+**Important**: The daemon ONLY captures:
+- ✅ Messages sent FROM your phone to yourself (incoming notes)
+- ✅ Messages sent FROM the daemon API to your phone
+
+The daemon IGNORES:
+- ❌ All group messages
+- ❌ Messages from other people to your phone
+- ❌ Messages you send to yourself via the phone interface
+
 **Workflow**:
 ```
-Your Phone → WhatsApp → Daemon → Database
+Your Phone → WhatsApp → Daemon → Database (only if from your phone)
+API → WhatsApp → Your Phone → Daemon → Database (sent messages)
 ```
 
 **Example**:
@@ -296,7 +302,6 @@ daemon:
 api:
   port: 3000
   host: "localhost"
-  api_key: "your-secure-api-key"
 ```
 
 **Configuration Options**:
@@ -306,7 +311,6 @@ api:
 - `daemon.log_file`: Path to store daemon activity logs
 - `api.port`: Port number for the HTTP API server
 - `api.host`: Host to bind the API server to (use "localhost" for security)
-- `api.api_key`: Secret key required for API authentication
 
 ## API Reference
 
@@ -316,7 +320,6 @@ Send a message to your WhatsApp number.
 
 **Request Headers**:
 - `Content-Type: application/json`
-- `Authorization: Bearer YOUR_API_KEY`
 
 **Request Body**:
 ```json
@@ -328,7 +331,6 @@ Send a message to your WhatsApp number.
 **Response**:
 - `200 OK`: Message sent successfully
 - `400 Bad Request`: Invalid request
-- `401 Unauthorized`: Invalid or missing API key
 - `503 Service Unavailable`: WhatsApp client not ready
 
 ### GET /api/health
@@ -362,7 +364,6 @@ Send automated messages from scripts:
 # Send daily reminder
 curl -X POST http://localhost:3000/api/messages \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your-key" \
   -d '{"message": "Daily backup completed at '$(date)'"'
 ```
 
@@ -375,7 +376,6 @@ Send alerts from monitoring systems:
 if [ $(df / | tail -1 | awk '{print $5}' | sed 's/%//') -gt 90 ]; then
   curl -X POST http://localhost:3000/api/messages \
     -H "Content-Type: application/json" \
-    -H "Authorization: Bearer your-key" \
     -d '{"message": "⚠️ WARNING: Disk usage over 90%"}'
 fi
 ```
@@ -388,7 +388,6 @@ Send yourself reminders from cron jobs:
 # Every weekday at 9am
 0 9 * * 1-5 curl -X POST http://localhost:3000/api/messages \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your-key" \
   -d '{"message": "Good morning! Remember to check emails"}'
 ```
 
@@ -406,7 +405,6 @@ Send yourself reminders from cron jobs:
 2. **HTTP API Server** (`api.ts`)
    - Express.js REST API
    - Single endpoint for sending messages
-   - API key authentication
    - Health check endpoint
 
 3. **Daemon Manager** (`daemon.ts`)
@@ -451,7 +449,6 @@ CREATE TABLE messages (
 
 - **Local Only**: All data stored locally in SQLite database
 - **No Cloud**: No data sent to external servers (except WhatsApp's own servers)
-- **API Authentication**: API key required for all requests
 - **Localhost Only**: API binds to localhost by default (change with caution)
 - **Session Persistence**: Authentication tokens stored in `.wwebjs_auth/` (excluded from git)
 - **Git Ignore**: Database and config files are excluded from version control
@@ -478,12 +475,6 @@ sudo journalctl -u messengar -n 50
 - Check logs with `npm run daemon:tail` or `sudo journalctl -u messengar -f`
 - Ensure daemon is running with `npm run daemon:status`
 - Wait a few seconds after daemon starts for QR code to appear
-
-### API Returns 401 Unauthorized
-
-- Check that `Authorization` header includes "Bearer" prefix
-- Verify API key matches config.yaml (case-sensitive)
-- Example: `Authorization: Bearer your-secure-api-key`
 
 ### API Returns 503 Service Unavailable
 
