@@ -380,7 +380,27 @@ if [ $(df / | tail -1 | awk '{print $5}' | sed 's/%//') -gt 90 ]; then
 fi
 ```
 
-### 4. Task Reminders
+### 4. Weather Updates
+
+Send automated weather reports using OpenWeatherMap API:
+
+```bash
+# Send current weather to WhatsApp (requires jq)
+curl "https://api.openweathermap.org/data/2.5/weather?zip={Zip Code for weather}&appid=YOUR_API_KEY&units=imperial" \
+  | /home/ash/messengar/weather_to_whatsapp.sh \
+  | jq -Rs '{message: .}' \
+  | curl -X POST http://localhost:3000/api/messages \
+      -H "Content-Type: application/json" \
+      -d @-
+```
+
+The `weather_to_whatsapp.sh` script formats OpenWeatherMap API responses into WhatsApp-friendly messages with emojis and proper line wrapping.
+
+Replace:
+- `YOUR_API_KEY` with your OpenWeatherMap API key
+- `zip=123435` with your ZIP code or use `&q=london` for city-based lookups
+
+### 5. Task Reminders
 
 Send yourself reminders from cron jobs:
 

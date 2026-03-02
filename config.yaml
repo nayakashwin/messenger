@@ -28,7 +28,7 @@
 #
 # ============================================================================
 
-personal_phone_number: "{Your Phone Number Here}"
+personal_phone_number: "{Your Phone Number}"
 
 # ============================================================================
 # DAEMON CONFIGURATION

@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=%i
+User=ash
 WorkingDirectory=/home/ash/messengar
 ExecStart=/usr/bin/node /home/ash/messengar/dist/main.js
 Restart=always
