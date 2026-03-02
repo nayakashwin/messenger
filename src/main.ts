@@ -29,7 +29,7 @@
 // ============================================================================
 
 import { Client, LocalAuth, Message } from 'whatsapp-web.js';
-import * as qrcode from 'qrcode-terminal';
+import QRCode from 'qrcode';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import { db, MessageRecord } from './database';
@@ -130,9 +130,10 @@ function initializeClient(): void {
   // ============================================================================
   
   // QR code for authentication
-  client.on('qr', (qr: string) => {
+  client.on('qr', async (qr: string) => {
     daemon?.log('\n📱 Scan this QR code with your phone:\n');
-    qrcode.generate(qr, { small: true });
+    const qrString = await QRCode.toString(qr, { type: 'terminal', small: true });
+    console.log(qrString);
     daemon?.log('\n⏳ Waiting for you to scan...\n');
   });
   

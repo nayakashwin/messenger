@@ -28,7 +28,6 @@
  */
 
 import express, { Request, Response, Application } from 'express';
-import bodyParser from 'body-parser';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -111,9 +110,9 @@ export class ApiServer {
     
     // Initialize Express app
     this.app = express();
-    
+
     // Setup middleware
-    this.app.use(bodyParser.json());
+    this.app.use(express.json());
     
     // Setup routes
     this.setupRoutes();
